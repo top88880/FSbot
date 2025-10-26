@@ -54,6 +54,30 @@ ADMIN_I18N = {
         'set_tutorial_link': '📖 设置教程链接',
         'set_notify_channel': '🔔 设置通知频道ID',
         'set_notify_group': '👥 设置通知群ID',
+        'purchase_notifications': '🔔 设置购买后通知',
+        'purchase_notif_title': '🔔 购买后通知设置 - {name}',
+        'enable_purchase_notif': '✅ 启用购买通知',
+        'disable_purchase_notif': '❌ 禁用购买通知',
+        'edit_notif_template': '📝 编辑通知模板',
+        'notif_status': '通知状态',
+        'enabled': '已启用',
+        'disabled': '已禁用',
+        'notif_template': '通知模板',
+        'default_template': '（使用默认模板）',
+        'notif_instructions': '配置说明',
+        'notif_instructions_text': '启用购买通知后，每次用户购买商品，系统将自动向设置的通知频道或群组发送订单详情。',
+        'notif_note': '注意',
+        'notif_note_text': '需要先配置 "通知频道ID" 或 "通知群ID" 才能正常发送通知。',
+        'edit_template_title': '📝 编辑购买通知模板',
+        'template_send_prompt': '请发送自定义的通知模板内容。',
+        'template_variables': '支持的变量',
+        'template_html_support': '支持HTML格式',
+        'template_html_text': '可以使用 <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;code&gt;</code> 等HTML标签美化消息。',
+        'template_clear': '发送 <code>清除</code> 或 <code>clear</code> 恢复使用默认模板',
+        'template_example': '示例模板',
+        'cancel': '❌ 取消',
+        'notif_toggle_success': '购买通知已{status}',
+        'operation_failed': '操作失败',
         'back': '⬅️ 返回',
         'error_loading': '❌ 加载代理详情时出错',
         'error_loading_settings': '❌ 加载代理设置时出错',
@@ -101,6 +125,30 @@ ADMIN_I18N = {
         'set_tutorial_link': '📖 Set Tutorial Link',
         'set_notify_channel': '🔔 Set Notify Channel ID',
         'set_notify_group': '👥 Set Notify Group ID',
+        'purchase_notifications': '🔔 Purchase Notifications',
+        'purchase_notif_title': '🔔 Purchase Notification Settings - {name}',
+        'enable_purchase_notif': '✅ Enable Notifications',
+        'disable_purchase_notif': '❌ Disable Notifications',
+        'edit_notif_template': '📝 Edit Template',
+        'notif_status': 'Status',
+        'enabled': 'Enabled',
+        'disabled': 'Disabled',
+        'notif_template': 'Template',
+        'default_template': '(Using default template)',
+        'notif_instructions': 'Configuration',
+        'notif_instructions_text': 'When enabled, the system will automatically send order details to the configured notification channel or group after each purchase.',
+        'notif_note': 'Note',
+        'notif_note_text': 'You must configure "Notify Channel ID" or "Notify Group ID" first for notifications to work.',
+        'edit_template_title': '📝 Edit Purchase Notification Template',
+        'template_send_prompt': 'Please send the custom notification template content.',
+        'template_variables': 'Supported Variables',
+        'template_html_support': 'HTML Support',
+        'template_html_text': 'You can use <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;code&gt;</code> and other HTML tags to format the message.',
+        'template_clear': 'Send <code>clear</code> or <code>清除</code> to restore default template',
+        'template_example': 'Example Template',
+        'cancel': '❌ Cancel',
+        'notif_toggle_success': 'Purchase notifications {status}',
+        'operation_failed': 'Operation failed',
         'back': '⬅️ Back',
         'error_loading': '❌ Error loading agent details',
         'error_loading_settings': '❌ Error loading agent settings',
@@ -610,6 +658,9 @@ def agent_settings_callback(update: Update, context: CallbackContext):
                 InlineKeyboardButton(t_admin(lang, 'set_notify_channel'), callback_data=f"admin_set_notify_channel {agent_id}"),
                 InlineKeyboardButton(t_admin(lang, 'set_notify_group'), callback_data=f"admin_set_notify_group {agent_id}")
             ],
+            [
+                InlineKeyboardButton(t_admin(lang, 'purchase_notifications'), callback_data=f"admin_purchase_notif {agent_id}")
+            ],
             [InlineKeyboardButton(t_admin(lang, 'back'), callback_data=f"agent_detail {agent_id}")],
             [InlineKeyboardButton(t_admin(lang, 'close'), callback_data=f"close {query.from_user.id}")]
         ]
@@ -656,7 +707,7 @@ def admin_set_cs_callback(update: Update, context: CallbackContext):
 • 多个客服: <code>@cs1 @cs2 @cs3</code> (用空格分隔)
 • 客服链接: <code>https://t.me/customer_service</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -689,7 +740,7 @@ def admin_set_official_callback(update: Update, context: CallbackContext):
 • 频道用户名: <code>@yourchannel</code>
 • 频道链接: <code>https://t.me/yourchannel</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -723,7 +774,7 @@ def admin_set_restock_callback(update: Update, context: CallbackContext):
 • 群组链接: <code>https://t.me/yourgroup</code>
 • 群组邀请链接: <code>https://t.me/+xxxxx</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -760,7 +811,7 @@ def admin_set_tutorial_callback(update: Update, context: CallbackContext):
 • <code>https://example.com/tutorial</code>
 • <code>https://docs.google.com/document/xxx</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -798,7 +849,7 @@ def admin_set_notify_channel_callback(update: Update, context: CallbackContext):
 • 数字ID (通常以 -100 开头): <code>-100123456789</code>
 • 或频道用户名: <code>@yourchannel</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -836,7 +887,7 @@ def admin_set_notify_group_callback(update: Update, context: CallbackContext):
 • 数字ID (通常以负数开头): <code>-123456789</code>
 • 或群组用户名: <code>@yourgroup</code>
 
-发送 <code>清除</code> 可以清除当前设置
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置
 
 <b>注意:</b> 群组主题支持 (message_thread_id) 将在未来版本中添加"""
     
@@ -850,6 +901,202 @@ def admin_set_notify_group_callback(update: Update, context: CallbackContext):
     )
 
 
+def admin_purchase_notif_callback(update: Update, context: CallbackContext):
+    """Show purchase notification settings panel."""
+    query = update.callback_query
+    query.answer()
+    
+    # Get user language
+    lang = get_locale(update, context)
+    
+    try:
+        agent_id = query.data.split(' ', 1)[1]
+        
+        agents_collection = bot_db['agents']
+        agent = get_agent_by_id(agents_collection, agent_id)
+        
+        if not agent:
+            safe_edit_message_text(
+                query, 
+                t_admin(lang, 'agent_not_found', agent_id=agent_id),
+                context=context,
+                view_name='purchase_notif'
+            )
+            return
+        
+        name = agent.get('name', 'Unnamed')
+        settings = agent.get('settings', {})
+        
+        # Get current notification settings
+        enable_purchase_notifications = settings.get('enable_purchase_notifications', False)
+        purchase_notification_template = settings.get('purchase_notification_template')
+        
+        # Build status text
+        status = t_admin(lang, 'enabled') if enable_purchase_notifications else t_admin(lang, 'disabled')
+        template_text = purchase_notification_template if purchase_notification_template else t_admin(lang, 'default_template')
+        
+        # Truncate template if too long
+        if len(template_text) > 200:
+            template_text = template_text[:200] + "..."
+        
+        text = f"""<b>{t_admin(lang, 'purchase_notif_title', name=name)}</b>
+
+<b>{t_admin(lang, 'notif_status')}:</b> {status}
+<b>{t_admin(lang, 'notif_template')}:</b> {template_text}
+
+<b>{t_admin(lang, 'notif_instructions')}:</b>
+{t_admin(lang, 'notif_instructions_text')}
+
+<b>{t_admin(lang, 'notif_note')}:</b> {t_admin(lang, 'notif_note_text')}"""
+        
+        # Build keyboard
+        toggle_button_text = t_admin(lang, 'disable_purchase_notif') if enable_purchase_notifications else t_admin(lang, 'enable_purchase_notif')
+        
+        keyboard = [
+            [InlineKeyboardButton(toggle_button_text, callback_data=f"admin_purchase_notif_toggle {agent_id}")],
+            [InlineKeyboardButton(t_admin(lang, 'edit_notif_template'), callback_data=f"admin_purchase_notif_template {agent_id}")],
+            [InlineKeyboardButton(t_admin(lang, 'back'), callback_data=f"agent_settings {agent_id}")],
+            [InlineKeyboardButton(t_admin(lang, 'close'), callback_data=f"close {query.from_user.id}")]
+        ]
+        
+        safe_edit_message_text(
+            query,
+            text=text,
+            parse_mode='HTML',
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            context=context,
+            view_name='purchase_notif'
+        )
+        
+    except Exception as e:
+        logging.error(f"Error in admin_purchase_notif_callback: {e}")
+        safe_edit_message_text(
+            query, 
+            t_admin(lang, 'error_loading') + f": {e}",
+            context=context,
+            view_name='purchase_notif'
+        )
+
+
+def admin_purchase_notif_toggle_callback(update: Update, context: CallbackContext):
+    """Toggle purchase notification on/off."""
+    from datetime import datetime
+    from mongo import agents
+    
+    query = update.callback_query
+    query.answer()
+    
+    lang = get_locale(update, context)
+    
+    try:
+        agent_id = query.data.split(' ', 1)[1]
+        
+        # Get current setting
+        agent = agents.find_one({'agent_id': agent_id})
+        if not agent:
+            query.answer(t_admin(lang, 'agent_not_found', agent_id=agent_id), show_alert=True)
+            return
+        
+        settings = agent.get('settings', {})
+        current_status = settings.get('enable_purchase_notifications', False)
+        new_status = not current_status
+        
+        # Update setting
+        agents.update_one(
+            {"agent_id": agent_id},
+            {
+                "$set": {
+                    "settings.enable_purchase_notifications": new_status,
+                    "updated_at": datetime.now()
+                }
+            }
+        )
+        
+        status_text = t_admin(lang, 'enabled') if new_status else t_admin(lang, 'disabled')
+        query.answer(t_admin(lang, 'notif_toggle_success', status=status_text), show_alert=True)
+        
+        # Refresh the panel
+        context.user_data['callback_data'] = f"admin_purchase_notif {agent_id}"
+        admin_purchase_notif_callback(update, context)
+        
+    except Exception as e:
+        logging.error(f"Error in admin_purchase_notif_toggle_callback: {e}")
+        query.answer(f"{t_admin(lang, 'operation_failed')}: {e}", show_alert=True)
+
+
+def admin_purchase_notif_template_callback(update: Update, context: CallbackContext):
+    """Initiate purchase notification template editing."""
+    query = update.callback_query
+    query.answer()
+    
+    lang = get_locale(update, context)
+    
+    agent_id = query.data.split(' ', 1)[1]
+    
+    # Determine field name based on language
+    field_name = '购买通知模板' if lang == 'zh' else 'Purchase Notification Template'
+    
+    context.user_data['admin_setting_flow'] = {
+        'agent_id': agent_id,
+        'field': 'purchase_notification_template',
+        'field_name': field_name,
+        'state': 'awaiting_template_input'
+    }
+    
+    # Build template variables list
+    variables_list = """• {agent_bot_username}
+• {order_sn}
+• {profit_per_item}
+• {ts}
+• {buyer_id}
+• {product_name}
+• {qty}
+• {order_total}
+• {unit_price}
+• {agent_price}
+• {base_price}
+• {before_balance}
+• {after_balance}
+• {profit_total}"""
+    
+    # Build example template
+    if lang == 'zh':
+        example_template = """🛒 新订单
+订单号: {order_sn}
+商品: {product_name}
+数量: {qty}
+利润: {profit_total}U"""
+    else:
+        example_template = """🛒 New Order
+Order ID: {order_sn}
+Product: {product_name}
+Quantity: {qty}
+Profit: {profit_total}U"""
+    
+    text = f"""<b>{t_admin(lang, 'edit_template_title')}</b>
+
+{t_admin(lang, 'template_send_prompt')}
+
+<b>{t_admin(lang, 'template_variables')}:</b>
+{variables_list}
+
+<b>{t_admin(lang, 'template_html_support')}:</b>
+{t_admin(lang, 'template_html_text')}
+
+{t_admin(lang, 'template_clear')}
+
+<b>{t_admin(lang, 'template_example')}:</b>
+<code>{example_template}</code>"""
+    
+    keyboard = [[InlineKeyboardButton(t_admin(lang, 'cancel'), callback_data=f"admin_purchase_notif {agent_id}")]]
+    
+    safe_edit_message_text(
+        query,
+        text=text,
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 
 def admin_setting_text_input(update: Update, context: CallbackContext):
     """Handle text input for admin setting flows."""
@@ -858,7 +1105,7 @@ def admin_setting_text_input(update: Update, context: CallbackContext):
     
     flow = context.user_data.get("admin_setting_flow")
     
-    if not flow or flow.get("state") not in ["awaiting_input", "awaiting_tutorial_input", "awaiting_notify_input"]:
+    if not flow or flow.get("state") not in ["awaiting_input", "awaiting_tutorial_input", "awaiting_notify_input", "awaiting_template_input"]:
         return  # Not in a flow
     
     agent_id = flow["agent_id"]
@@ -867,8 +1114,8 @@ def admin_setting_text_input(update: Update, context: CallbackContext):
     text = update.message.text.strip()
     
     try:
-        # Handle clearing
-        if text == "清除":
+        # Handle clearing (support both Chinese and English)
+        if text.lower() in ["清除", "clear", "reset"]:
             agents.update_one(
                 {"agent_id": agent_id},
                 {
@@ -905,6 +1152,9 @@ def admin_setting_text_input(update: Update, context: CallbackContext):
                     parse_mode="HTML"
                 )
                 return
+        elif flow["state"] == "awaiting_template_input":
+            # Template input - no validation needed, allow any text
+            pass
         else:
             # General validation - allow @username or URLs
             if not (text.startswith("@") or text.startswith("http://") or text.startswith("https://")):

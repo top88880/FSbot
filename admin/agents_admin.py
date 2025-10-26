@@ -64,6 +64,20 @@ ADMIN_I18N = {
         'disabled': '已禁用',
         'notif_template': '通知模板',
         'default_template': '（使用默认模板）',
+        'notif_instructions': '配置说明',
+        'notif_instructions_text': '启用购买通知后，每次用户购买商品，系统将自动向设置的通知频道或群组发送订单详情。',
+        'notif_note': '注意',
+        'notif_note_text': '需要先配置 "通知频道ID" 或 "通知群ID" 才能正常发送通知。',
+        'edit_template_title': '📝 编辑购买通知模板',
+        'template_send_prompt': '请发送自定义的通知模板内容。',
+        'template_variables': '支持的变量',
+        'template_html_support': '支持HTML格式',
+        'template_html_text': '可以使用 <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;code&gt;</code> 等HTML标签美化消息。',
+        'template_clear': '发送 <code>清除</code> 恢复使用默认模板',
+        'template_example': '示例模板',
+        'cancel': '❌ 取消',
+        'notif_toggle_success': '购买通知已{status}',
+        'operation_failed': '操作失败',
         'back': '⬅️ 返回',
         'error_loading': '❌ 加载代理详情时出错',
         'error_loading_settings': '❌ 加载代理设置时出错',
@@ -121,6 +135,20 @@ ADMIN_I18N = {
         'disabled': 'Disabled',
         'notif_template': 'Template',
         'default_template': '(Using default template)',
+        'notif_instructions': 'Configuration',
+        'notif_instructions_text': 'When enabled, the system will automatically send order details to the configured notification channel or group after each purchase.',
+        'notif_note': 'Note',
+        'notif_note_text': 'You must configure "Notify Channel ID" or "Notify Group ID" first for notifications to work.',
+        'edit_template_title': '📝 Edit Purchase Notification Template',
+        'template_send_prompt': 'Please send the custom notification template content.',
+        'template_variables': 'Supported Variables',
+        'template_html_support': 'HTML Support',
+        'template_html_text': 'You can use <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;code&gt;</code> and other HTML tags to format the message.',
+        'template_clear': 'Send <code>清除</code> to restore default template',
+        'template_example': 'Example Template',
+        'cancel': '❌ Cancel',
+        'notif_toggle_success': 'Purchase notifications {status}',
+        'operation_failed': 'Operation failed',
         'back': '⬅️ Back',
         'error_loading': '❌ Error loading agent details',
         'error_loading_settings': '❌ Error loading agent settings',
@@ -916,10 +944,10 @@ def admin_purchase_notif_callback(update: Update, context: CallbackContext):
 <b>{t_admin(lang, 'notif_status')}:</b> {status}
 <b>{t_admin(lang, 'notif_template')}:</b> {template_text}
 
-<b>配置说明:</b>
-启用购买通知后，每次用户购买商品，系统将自动向设置的通知频道或群组发送订单详情。
+<b>{t_admin(lang, 'notif_instructions')}:</b>
+{t_admin(lang, 'notif_instructions_text')}
 
-<b>注意:</b> 需要先配置 "通知频道ID" 或 "通知群ID" 才能正常发送通知。"""
+<b>{t_admin(lang, 'notif_note')}:</b> {t_admin(lang, 'notif_note_text')}"""
         
         # Build keyboard
         toggle_button_text = t_admin(lang, 'disable_purchase_notif') if enable_purchase_notifications else t_admin(lang, 'enable_purchase_notif')
@@ -985,7 +1013,7 @@ def admin_purchase_notif_toggle_callback(update: Update, context: CallbackContex
         )
         
         status_text = t_admin(lang, 'enabled') if new_status else t_admin(lang, 'disabled')
-        query.answer(f"✅ 购买通知已{status_text}", show_alert=True)
+        query.answer(t_admin(lang, 'notif_toggle_success', status=status_text), show_alert=True)
         
         # Refresh the panel
         context.user_data['callback_data'] = f"admin_purchase_notif {agent_id}"
@@ -993,7 +1021,7 @@ def admin_purchase_notif_toggle_callback(update: Update, context: CallbackContex
         
     except Exception as e:
         logging.error(f"Error in admin_purchase_notif_toggle_callback: {e}")
-        query.answer(f"❌ 操作失败: {e}", show_alert=True)
+        query.answer(f"{t_admin(lang, 'operation_failed')}: {e}", show_alert=True)
 
 
 def admin_purchase_notif_template_callback(update: Update, context: CallbackContext):
@@ -1001,47 +1029,66 @@ def admin_purchase_notif_template_callback(update: Update, context: CallbackCont
     query = update.callback_query
     query.answer()
     
+    lang = get_locale(update, context)
+    
     agent_id = query.data.split(' ', 1)[1]
+    
+    # Determine field name based on language
+    field_name = '购买通知模板' if lang == 'zh' else 'Purchase Notification Template'
+    
     context.user_data['admin_setting_flow'] = {
         'agent_id': agent_id,
         'field': 'purchase_notification_template',
-        'field_name': '购买通知模板',
+        'field_name': field_name,
         'state': 'awaiting_template_input'
     }
     
-    text = """<b>📝 编辑购买通知模板</b>
-
-请发送自定义的通知模板内容。
-
-<b>支持的变量:</b>
-• {agent_bot_username} - 代理机器人用户名
-• {order_sn} - 订单号
-• {profit_per_item} - 单个利润
-• {ts} - 时间戳
-• {buyer_id} - 买家ID
-• {product_name} - 商品名称
-• {qty} - 数量
-• {order_total} - 订单总价
-• {unit_price} - 单价
-• {agent_price} - 代理价格
-• {base_price} - 基础价格
-• {before_balance} - 购买前余额
-• {after_balance} - 购买后余额
-• {profit_total} - 总利润
-
-<b>支持HTML格式:</b>
-可以使用 <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;code&gt;</code> 等HTML标签美化消息。
-
-发送 <code>清除</code> 恢复使用默认模板
-
-<b>示例模板:</b>
-<code>🛒 新订单
+    # Build template variables list
+    variables_list = """• {agent_bot_username}
+• {order_sn}
+• {profit_per_item}
+• {ts}
+• {buyer_id}
+• {product_name}
+• {qty}
+• {order_total}
+• {unit_price}
+• {agent_price}
+• {base_price}
+• {before_balance}
+• {after_balance}
+• {profit_total}"""
+    
+    # Build example template
+    if lang == 'zh':
+        example_template = """🛒 新订单
 订单号: {order_sn}
 商品: {product_name}
 数量: {qty}
-利润: {profit_total}U</code>"""
+利润: {profit_total}U"""
+    else:
+        example_template = """🛒 New Order
+Order ID: {order_sn}
+Product: {product_name}
+Quantity: {qty}
+Profit: {profit_total}U"""
     
-    keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"admin_purchase_notif {agent_id}")]]
+    text = f"""<b>{t_admin(lang, 'edit_template_title')}</b>
+
+{t_admin(lang, 'template_send_prompt')}
+
+<b>{t_admin(lang, 'template_variables')}:</b>
+{variables_list}
+
+<b>{t_admin(lang, 'template_html_support')}:</b>
+{t_admin(lang, 'template_html_text')}
+
+{t_admin(lang, 'template_clear')}
+
+<b>{t_admin(lang, 'template_example')}:</b>
+<code>{example_template}</code>"""
+    
+    keyboard = [[InlineKeyboardButton(t_admin(lang, 'cancel'), callback_data=f"admin_purchase_notif {agent_id}")]]
     
     safe_edit_message_text(
         query,

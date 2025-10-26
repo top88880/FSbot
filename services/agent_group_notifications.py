@@ -299,11 +299,20 @@ def send_order_group_notification(
         custom_template = settings.get('purchase_notification_template')
         
         if custom_template:
-            # Use custom template
+            # Use custom template with safe formatting
+            # Only allow the keys that are in order_data to prevent template injection
             try:
-                message = custom_template.format(**order_data)
-            except KeyError as e:
-                logging.error(f"Missing key in custom template: {e}, falling back to default")
+                # Create a safe copy of order_data with only allowed keys
+                allowed_keys = {
+                    'agent_bot_username', 'order_sn', 'profit_per_item', 'ts',
+                    'buyer_id', 'product_name', 'qty', 'order_total',
+                    'unit_price', 'agent_price', 'base_price',
+                    'before_balance', 'after_balance', 'profit_total'
+                }
+                safe_data = {k: v for k, v in order_data.items() if k in allowed_keys}
+                message = custom_template.format(**safe_data)
+            except (KeyError, ValueError, IndexError) as e:
+                logging.error(f"Error formatting custom template: {e}, falling back to default")
                 message = format_order_notification(lang, order_data)
         else:
             # Use default template

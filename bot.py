@@ -79,6 +79,7 @@ from bot_links import (
     get_customer_service_for_child,
     get_tutorial_link_for_child
 )
+from services.buyer_message import sanitize_buyer_tip, build_agent_contacts_block
 
 # Multi-tenant agent system integration
 try:
@@ -7238,6 +7239,41 @@ def dabaohao(context, user_id, folder_names, leixing, nowuid, erjiprojectname, f
                 }
                 
                 send_order_group_notification(context, order_data, user_lang)
+                
+                # Send buyer reminder if enabled and configured
+                try:
+                    agent = agents.find_one({'agent_id': agent_id})
+                    if agent:
+                        settings = agent.get('settings', {})
+                        buyer_notify_enabled = settings.get('buyer_notify_enabled', False)
+                        buyer_notify_template = settings.get('buyer_notify_template', '').strip()
+                        
+                        if buyer_notify_enabled and buyer_notify_template:
+                            # Build variables for template substitution
+                            agent_name = agent.get('agent_name', bot_username)
+                            contacts_block_agent = build_agent_contacts_block(settings, user_lang)
+                            
+                            # Perform template substitution
+                            buyer_reminder = buyer_notify_template.format(
+                                agent_name=agent_name,
+                                bot_username=bot_username,
+                                contacts_block_agent=contacts_block_agent,
+                                order_sn=bianhao,
+                                product_name=product_name_full,
+                                qty=count,
+                                total=f"{order_total:.2f}"
+                            )
+                            
+                            # Send buyer reminder
+                            context.bot.send_message(
+                                chat_id=user_id,
+                                text=buyer_reminder,
+                                parse_mode='HTML',
+                                disable_web_page_preview=True
+                            )
+                            logging.info(f"Sent buyer reminder to user {user_id} for agent {agent_id}")
+                except Exception as buyer_notif_error:
+                    logging.error(f"Failed to send buyer reminder notification: {buyer_notif_error}")
         except Exception as notif_error:
             logging.error(f"Failed to send agent group order notification: {notif_error}")
 
@@ -7314,11 +7350,20 @@ def qrgaimai(update: Update, context: CallbackContext):
 
             # hb.update_many(query_condition, update_data, limit=gmsl)
 
+            # Sanitize buyer message to remove any env-based contact lines (for child agents)
+            agent_id = context.bot_data.get('agent_id')
+            if agent_id:
+                # Child agent: sanitize the stored text to remove main-bot contacts
+                fstext_clean = sanitize_buyer_tip(fstext)
+            else:
+                # Main bot: use text as-is
+                fstext_clean = fstext
+            
             # Append agent contact information to buyer message
             contacts_block = format_contacts_block_for_child(context, lang)
-            buyer_message = fstext
+            buyer_message = fstext_clean
             if contacts_block:
-                buyer_message = f"{fstext}\n\n{contacts_block}"
+                buyer_message = f"{fstext_clean}\n\n{contacts_block}"
 
             context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
                                      reply_markup=InlineKeyboardMarkup(keyboard))
@@ -7575,11 +7620,20 @@ def qrgaimai(update: Update, context: CallbackContext):
             update_data = {"$set": {'state': 1, 'yssj': timer, 'gmid': user_id}}
             hb.update_many({"_id": {"$in": document_ids}}, update_data)
 
+            # Sanitize buyer message to remove any env-based contact lines (for child agents)
+            agent_id = context.bot_data.get('agent_id')
+            if agent_id:
+                # Child agent: sanitize the stored text to remove main-bot contacts
+                fstext_clean = sanitize_buyer_tip(fstext)
+            else:
+                # Main bot: use text as-is
+                fstext_clean = fstext
+            
             # Append agent contact information to buyer message
             contacts_block = format_contacts_block_for_child(context, lang)
-            buyer_message = fstext
+            buyer_message = fstext_clean
             if contacts_block:
-                buyer_message = f"{fstext}\n\n{contacts_block}"
+                buyer_message = f"{fstext_clean}\n\n{contacts_block}"
 
             context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
                                      reply_markup=InlineKeyboardMarkup(keyboard))

@@ -43,15 +43,9 @@ def reset_purchase_tips():
         logging.info(f"📣 频道：{RESTOCK_GROUP}")
         
         # 生成新的购买提示文本
-        new_text = f'''
+        new_text = '''
 <b>♻️ 账号正在打包，请稍等片刻！
-‼️ 二级密码看文件夹里 json
-
-➖➖➖➖➖➖➖➖
-➖➖➖➖➖➖➖➖
-☎️ 客服：{CUSTOMER_SERVICE}
-📣 频道：{RESTOCK_GROUP}
-➖➖➖➖➖➖➖➖</b>
+‼️ 二级密码看文件夹里 json</b>
         '''.strip()
         
         # 查询所有商品

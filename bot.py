@@ -335,22 +335,32 @@ def prepare_buyer_message(context: CallbackContext, fstext: str, lang: str,
                         product_name_full = f"{category_name}/{erjiprojectname}" if category_name else erjiprojectname
                     else:
                         product_name_full = erjiprojectname
-                except Exception:
+                except (KeyError, TypeError, AttributeError) as db_error:
+                    logging.warning(f"Error getting product name: {db_error}")
                     product_name_full = erjiprojectname
                 
                 # Perform template substitution
-                buyer_message = buyer_notify_template.format(
-                    agent_name=agent_name,
-                    bot_username=bot_username,
-                    contacts_block_agent=contacts_block_agent,
-                    order_sn=bianhao,
-                    product_name=product_name_full,
-                    qty=gmsl,
-                    total=f"{zxymoney:.2f}"
-                )
+                # Note: Template is admin-configured in agents_admin.py
+                # Validate template to prevent format string attacks
+                try:
+                    buyer_message = buyer_notify_template.format(
+                        agent_name=agent_name,
+                        bot_username=bot_username,
+                        contacts_block_agent=contacts_block_agent,
+                        order_sn=bianhao,
+                        product_name=product_name_full,
+                        qty=gmsl,
+                        total=f"{zxymoney:.2f}"
+                    )
+                except (KeyError, ValueError, IndexError) as template_error:
+                    logging.error(f"Invalid buyer notify template format: {template_error}")
+                    # Fallback to sanitized product tip if template is invalid
+                    fstext_clean = sanitize_buyer_tip(fstext)
+                    contacts_block = format_contacts_block_for_child(context, lang)
+                    buyer_message = f"{fstext_clean}\n\n{contacts_block}" if contacts_block else fstext_clean
                 
                 return (buyer_message, False)
-    except Exception as e:
+    except (KeyError, TypeError, AttributeError) as e:
         logging.error(f"Error preparing buyer notify template: {e}")
     
     # Child agent: use sanitized product tip
@@ -7249,7 +7259,8 @@ def dabaohao(context, user_id, folder_names, leixing, nowuid, erjiprojectname, f
         agent_markup = get_agent_markup_usdt(context)
         agent_price = base_price + agent_markup
         order_total = float(agent_price) * count
-    except Exception:
+    except (KeyError, TypeError, ValueError, ArithmeticError) as price_error:
+        logging.warning(f"Error calculating order total: {price_error}")
         order_total = 0.0
     
     # Send buyer-facing message (template or sanitized tip)

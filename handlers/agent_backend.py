@@ -255,8 +255,8 @@ def agent_command(update: Update, context: CallbackContext):
         
         admin_ids = get_admin_ids()
         
-        # Check if user can claim ownership (owners empty or all are admins)
-        if not owners or all(owner_id in admin_ids for owner_id in owners):
+        # Check if user can claim ownership (owners empty or all are admins AND user not already an owner)
+        if not owners or (all(owner_id in admin_ids for owner_id in owners) and user_id not in owners):
             # Show bind button
             show_bind_panel(update, context, agent, owners, is_callback=False, lang=lang)
             return

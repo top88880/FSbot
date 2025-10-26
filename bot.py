@@ -7314,7 +7314,13 @@ def qrgaimai(update: Update, context: CallbackContext):
 
             # hb.update_many(query_condition, update_data, limit=gmsl)
 
-            context.bot.send_message(chat_id=user_id, text=fstext, parse_mode='HTML', disable_web_page_preview=True,
+            # Append agent contact information to buyer message
+            contacts_block = format_contacts_block_for_child(context, lang)
+            buyer_message = fstext
+            if contacts_block:
+                buyer_message = f"{fstext}\n\n{contacts_block}"
+
+            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
                                      reply_markup=InlineKeyboardMarkup(keyboard))
             fstext = f'''
 用户: <a href="tg://user?id={user_id}">{fullname}</a> @{username}
@@ -7368,7 +7374,13 @@ def qrgaimai(update: Update, context: CallbackContext):
             user.update_one({'user_id': user_id}, {"$set": {'sign': 0}})
             del_message(query.message)
 
-            context.bot.send_message(chat_id=user_id, text=fstext, parse_mode='HTML', disable_web_page_preview=True,
+            # Append agent contact information to buyer message
+            contacts_block = format_contacts_block_for_child(context, lang)
+            buyer_message = fstext
+            if contacts_block:
+                buyer_message = f"{fstext}\n\n{contacts_block}"
+
+            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
                                      reply_markup=InlineKeyboardMarkup(keyboard))
             folder_names = []
             for j in list(hb.find({"nowuid": nowuid, 'state': 0, 'leixing': '谷歌'}, limit=gmsl)):
@@ -7426,7 +7438,13 @@ def qrgaimai(update: Update, context: CallbackContext):
             user.update_one({'user_id': user_id}, {"$set": {'sign': 0}})
             del_message(query.message)
 
-            context.bot.send_message(chat_id=user_id, text=fstext, parse_mode='HTML', disable_web_page_preview=True,
+            # Append agent contact information to buyer message
+            contacts_block = format_contacts_block_for_child(context, lang)
+            buyer_message = fstext
+            if contacts_block:
+                buyer_message = f"{fstext}\n\n{contacts_block}"
+
+            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
                                      reply_markup=InlineKeyboardMarkup(keyboard))
             folder_names = []
             for j in list(hb.find({"nowuid": nowuid, 'state': 0}, limit=gmsl)):
@@ -7486,7 +7504,13 @@ def qrgaimai(update: Update, context: CallbackContext):
                 hb.update_one({'hbid': hbid}, {"$set": {'state': 1, 'yssj': timer, 'gmid': user_id}})
                 folder_names.append(projectname)
 
-            context.bot.send_message(chat_id=user_id, text=fstext, parse_mode='HTML', disable_web_page_preview=True,
+            # Append agent contact information to buyer message
+            contacts_block = format_contacts_block_for_child(context, lang)
+            buyer_message = fstext
+            if contacts_block:
+                buyer_message = f"{fstext}\n\n{contacts_block}"
+
+            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
                                      reply_markup=InlineKeyboardMarkup(keyboard))
 
             folder_names = '\n'.join(folder_names)
@@ -7551,7 +7575,13 @@ def qrgaimai(update: Update, context: CallbackContext):
             update_data = {"$set": {'state': 1, 'yssj': timer, 'gmid': user_id}}
             hb.update_many({"_id": {"$in": document_ids}}, update_data)
 
-            context.bot.send_message(chat_id=user_id, text=fstext, parse_mode='HTML', disable_web_page_preview=True,
+            # Append agent contact information to buyer message
+            contacts_block = format_contacts_block_for_child(context, lang)
+            buyer_message = fstext
+            if contacts_block:
+                buyer_message = f"{fstext}\n\n{contacts_block}"
+
+            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
                                      reply_markup=InlineKeyboardMarkup(keyboard))
 
             fstext = f'''
@@ -11216,6 +11246,8 @@ def register_common_handlers(dispatcher, job_queue):
             admin_set_cs_callback, admin_set_official_callback,
             admin_set_restock_callback, admin_set_tutorial_callback,
             admin_set_notify_channel_callback, admin_set_notify_group_callback,
+            admin_purchase_notif_callback, admin_purchase_notif_toggle_callback,
+            admin_purchase_notif_template_callback,
             admin_setting_text_input
         )
         
@@ -11230,6 +11262,9 @@ def register_common_handlers(dispatcher, job_queue):
         dispatcher.add_handler(CallbackQueryHandler(admin_set_tutorial_callback, pattern='^admin_set_tutorial '), group=-1)
         dispatcher.add_handler(CallbackQueryHandler(admin_set_notify_channel_callback, pattern='^admin_set_notify_channel '), group=-1)
         dispatcher.add_handler(CallbackQueryHandler(admin_set_notify_group_callback, pattern='^admin_set_notify_group '), group=-1)
+        dispatcher.add_handler(CallbackQueryHandler(admin_purchase_notif_callback, pattern='^admin_purchase_notif '), group=-1)
+        dispatcher.add_handler(CallbackQueryHandler(admin_purchase_notif_toggle_callback, pattern='^admin_purchase_notif_toggle '), group=-1)
+        dispatcher.add_handler(CallbackQueryHandler(admin_purchase_notif_template_callback, pattern='^admin_purchase_notif_template '), group=-1)
         
         logging.info("✅ Admin agent management handlers registered")
     except ImportError as e:

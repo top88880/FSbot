@@ -275,7 +275,40 @@ def send_order_group_notification(
         True if sent successfully
     """
     try:
-        message = format_order_notification(lang, order_data)
+        # Check if this is an agent bot
+        agent_id = context.bot_data.get('agent_id')
+        if not agent_id:
+            # Main bot - no purchase notifications
+            return False
+        
+        # Check if purchase notifications are enabled
+        from mongo import agents
+        agent = agents.find_one({'agent_id': agent_id})
+        if not agent:
+            logging.warning(f"Agent not found: {agent_id}")
+            return False
+        
+        settings = agent.get('settings', {})
+        enable_purchase_notifications = settings.get('enable_purchase_notifications', False)
+        
+        if not enable_purchase_notifications:
+            logging.debug(f"Purchase notifications disabled for agent {agent_id}")
+            return False
+        
+        # Get custom template if provided
+        custom_template = settings.get('purchase_notification_template')
+        
+        if custom_template:
+            # Use custom template
+            try:
+                message = custom_template.format(**order_data)
+            except KeyError as e:
+                logging.error(f"Missing key in custom template: {e}, falling back to default")
+                message = format_order_notification(lang, order_data)
+        else:
+            # Use default template
+            message = format_order_notification(lang, order_data)
+        
         return send_agent_group_message(context, message)
     except Exception as e:
         logging.error(f"Error sending order group notification: {e}")

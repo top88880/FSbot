@@ -45,7 +45,7 @@ I18N = {
         'test_group_notification': '📤 发送测试群通知',
         'manage_link_buttons': '🔘 管理链接按钮',
         'send_test_notification': '📡 发送测试通知',
-        'business_report': '📊 经营报告',
+        'sales_stats': '📊 销售统计',
         'close': '❌ 关闭',
         'not_agent_bot': '❌ 此命令仅在代理机器人中可用。',
         'agent_not_found': '❌ 未找到代理信息。',
@@ -91,7 +91,7 @@ I18N = {
         'test_group_notification': '📤 Send Test Group Notification',
         'manage_link_buttons': '🔘 Manage Link Buttons',
         'send_test_notification': '📡 Send Test Notification',
-        'business_report': '📊 Business Report',
+        'sales_stats': '📊 Sales Statistics',
         'close': '❌ Close',
         'not_agent_bot': '❌ This command is only available in agent bots.',
         'agent_not_found': '❌ Agent information not found.',
@@ -451,9 +451,9 @@ def show_agent_panel(update: Update, context: CallbackContext, agent: dict = Non
     if btn3_data not in seen_buttons:
         row2.append(InlineKeyboardButton(t(lang, 'manage_link_buttons'), callback_data=btn3_data))
         seen_buttons.add(btn3_data)
-    btn4_data = "agent_stats"
+    btn4_data = "agent:sales_stats"
     if btn4_data not in seen_buttons:
-        row2.append(InlineKeyboardButton(t(lang, 'business_report'), callback_data=btn4_data))
+        row2.append(InlineKeyboardButton(t(lang, 'sales_stats'), callback_data=btn4_data))
         seen_buttons.add(btn4_data)
     if row2:
         keyboard.append(row2)

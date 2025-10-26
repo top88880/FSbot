@@ -179,6 +179,92 @@ def remove_admin(user_id: int) -> bool:
         return True
     return False
 
+# ✅ Safe Message Editing Utility
+def safe_edit_message(query_or_update, text: str = None, reply_markup: InlineKeyboardMarkup = None, 
+                     parse_mode: str = 'HTML', disable_web_page_preview: bool = True):
+    """
+    Safely edit a message, avoiding "Message is not modified" errors.
+    
+    Args:
+        query_or_update: Either CallbackQuery or Update object
+        text: New message text (optional if only editing markup)
+        reply_markup: New keyboard markup (optional if only editing text)
+        parse_mode: Parse mode for text (default: 'HTML')
+        disable_web_page_preview: Disable web page preview (default: True)
+    
+    Returns:
+        True if edit was successful, False otherwise
+    """
+    try:
+        # Extract query from Update if needed
+        if hasattr(query_or_update, 'callback_query'):
+            query = query_or_update.callback_query
+        else:
+            query = query_or_update
+        
+        # Always answer callback query promptly if it exists
+        if query and hasattr(query, 'answer'):
+            try:
+                query.answer()
+            except Exception as e:
+                logging.debug(f"Could not answer callback query: {e}")
+        
+        # Get current message
+        message = query.message if query else None
+        if not message:
+            logging.warning("No message to edit in safe_edit_message")
+            return False
+        
+        # Get current text and markup
+        current_text = message.text or message.caption or ""
+        current_markup = message.reply_markup
+        
+        # Compare markup by converting to dict representation
+        def markup_to_dict(markup):
+            if not markup or not hasattr(markup, 'inline_keyboard'):
+                return None
+            return [[{'text': btn.text, 'callback_data': btn.callback_data, 'url': btn.url} 
+                    for btn in row] for row in markup.inline_keyboard]
+        
+        current_markup_dict = markup_to_dict(current_markup)
+        new_markup_dict = markup_to_dict(reply_markup)
+        
+        # Check if anything changed
+        text_changed = text is not None and text.strip() != current_text.strip()
+        markup_changed = new_markup_dict != current_markup_dict
+        
+        if not text_changed and not markup_changed:
+            logging.debug("Message content unchanged, skipping edit")
+            return True
+        
+        # Decide which edit method to use
+        if text_changed and text is not None:
+            # Edit text (and markup if provided)
+            query.edit_message_text(
+                text=text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+                disable_web_page_preview=disable_web_page_preview
+            )
+            logging.debug("Message text edited successfully")
+        elif markup_changed and reply_markup is not None:
+            # Only edit markup
+            query.edit_message_reply_markup(reply_markup=reply_markup)
+            logging.debug("Message markup edited successfully")
+        
+        return True
+        
+    except telegram.error.BadRequest as e:
+        if "Message is not modified" in str(e):
+            logging.debug("Message is not modified (suppressed)")
+            return True
+        else:
+            logging.warning(f"BadRequest while editing message: {e}")
+            return False
+    except Exception as e:
+        logging.error(f"Error in safe_edit_message: {e}")
+        return False
+
 # ✅ Agent Context and Pricing Helpers
 def get_current_agent_id(context: CallbackContext) -> str:
     """Get the agent_id from bot_data context, or None if master bot."""
@@ -2026,6 +2112,295 @@ def sales_dashboard(update: Update, context: CallbackContext):
         reply_markup=InlineKeyboardMarkup(keyboard),
         disable_web_page_preview=True
     )
+
+
+# 🆕 Agent-specific Sales Statistics
+def build_sales_stats(context: CallbackContext, agent_id: str, now: datetime = None):
+    """
+    Build comprehensive sales statistics for an agent.
+    
+    Args:
+        context: CallbackContext
+        agent_id: Agent ID to get stats for
+        now: Current datetime (defaults to datetime.now())
+    
+    Returns:
+        Dict with all statistics
+    """
+    if now is None:
+        now = datetime.now()
+    
+    # Time ranges
+    today_start = datetime(now.year, now.month, now.day)
+    day_ago = now - timedelta(days=1)
+    week_ago = now - timedelta(days=7)
+    
+    # Get agent info
+    agent = agents.find_one({'agent_id': agent_id})
+    if not agent:
+        return None
+    
+    markup_usdt = Decimal(str(agent.get('markup_usdt', '0')))
+    markup_rmb = float(agent.get('markup_rmb', 0))
+    
+    # Bot status - check if bot is running (has recent activity)
+    bot_username = agent.get('bot_username', 'N/A')
+    bot_token = agent.get('bot_token', '')
+    bot_status = "🟢 在线" if bot_token else "🔴 未配置"
+    last_heartbeat = agent.get('last_activity', 'N/A')
+    
+    # Get agent-specific orders from agent_ledger
+    def count_orders_and_profit(start_time=None, end_time=None):
+        """Count orders and calculate profit for agent."""
+        query = {'agent_id': agent_id}
+        if start_time:
+            query['created_at'] = {'$gte': start_time}
+        if end_time:
+            if 'created_at' in query:
+                query['created_at']['$lt'] = end_time
+            else:
+                query['created_at'] = {'$lt': end_time}
+        
+        orders = list(agent_ledger.find(query))
+        total_profit = sum(Decimal(str(o.get('profit_amount', 0))) for o in orders)
+        completed = sum(1 for o in orders if o.get('status') == 'completed')
+        cancelled = sum(1 for o in orders if o.get('status') == 'cancelled')
+        total_amount = sum(Decimal(str(o.get('order_amount', 0))) for o in orders)
+        
+        return {
+            'count': len(orders),
+            'completed': completed,
+            'cancelled': cancelled,
+            'total_amount': float(total_amount),
+            'profit': float(total_profit)
+        }
+    
+    # Order stats
+    orders_all = count_orders_and_profit()
+    orders_24h = count_orders_and_profit(start_time=day_ago)
+    orders_7d = count_orders_and_profit(start_time=week_ago)
+    
+    # User stats - get unique users who have orders with this agent
+    def count_unique_users(start_time=None):
+        query = {'agent_id': agent_id}
+        if start_time:
+            query['created_at'] = {'$gte': start_time}
+        orders = agent_ledger.find(query)
+        user_ids = set(o.get('user_id') for o in orders if o.get('user_id'))
+        return len(user_ids)
+    
+    users_total = count_unique_users()
+    users_24h = count_unique_users(start_time=day_ago)
+    users_7d_new = count_unique_users(start_time=week_ago) - count_unique_users(start_time=day_ago)
+    
+    # Recharge stats - get agent-specific recharges
+    def count_recharges(start_time=None, end_time=None, cz_type=None):
+        """Count recharges for this agent's users."""
+        # Get user IDs that have used this agent
+        agent_user_ids = set()
+        for order in agent_ledger.find({'agent_id': agent_id}):
+            if order.get('user_id'):
+                agent_user_ids.add(order['user_id'])
+        
+        if not agent_user_ids:
+            return {'count': 0, 'amount': 0}
+        
+        query = {
+            'user_id': {'$in': list(agent_user_ids)},
+            'status': 'success'
+        }
+        if start_time:
+            query['time'] = {'$gte': start_time}
+        if end_time:
+            if 'time' in query:
+                query['time']['$lt'] = end_time
+            else:
+                query['time'] = {'$lt': end_time}
+        if cz_type:
+            query['cz_type'] = cz_type
+        
+        recharges = list(topup.find(query))
+        total_amount = sum(float(r.get('money', 0)) for r in recharges)
+        
+        return {
+            'count': len(recharges),
+            'amount': total_amount
+        }
+    
+    # Recharge breakdown by type and time range
+    recharge_stats = {
+        'all': {
+            'usdt_trc20': count_recharges(cz_type='usdt'),
+            'alipay': count_recharges(cz_type='alipay'),
+            'wechat': count_recharges(cz_type='wechat'),
+        },
+        '24h': {
+            'usdt_trc20': count_recharges(start_time=day_ago, cz_type='usdt'),
+            'alipay': count_recharges(start_time=day_ago, cz_type='alipay'),
+            'wechat': count_recharges(start_time=day_ago, cz_type='wechat'),
+        },
+        '7d': {
+            'usdt_trc20': count_recharges(start_time=week_ago, cz_type='usdt'),
+            'alipay': count_recharges(start_time=week_ago, cz_type='alipay'),
+            'wechat': count_recharges(start_time=week_ago, cz_type='wechat'),
+        }
+    }
+    
+    return {
+        'agent_id': agent_id,
+        'agent_name': agent.get('agent_name', 'N/A'),
+        'bot_username': bot_username,
+        'bot_status': bot_status,
+        'last_heartbeat': last_heartbeat,
+        'markup_usdt': float(markup_usdt),
+        'markup_rmb': markup_rmb,
+        'orders': {
+            'all': orders_all,
+            '24h': orders_24h,
+            '7d': orders_7d
+        },
+        'users': {
+            'total': users_total,
+            '24h': users_24h,
+            '7d_new': users_7d_new
+        },
+        'recharges': recharge_stats,
+        'updated_at': now
+    }
+
+
+def render_sales_stats(stats: dict, lang: str = 'zh'):
+    """
+    Render sales statistics into formatted text and keyboard.
+    
+    Args:
+        stats: Statistics dict from build_sales_stats
+        lang: Language code ('zh' or 'en')
+    
+    Returns:
+        Tuple of (text, keyboard)
+    """
+    if not stats:
+        text = "❌ 无法加载统计数据" if lang == 'zh' else "❌ Failed to load statistics"
+        keyboard = [[InlineKeyboardButton("🔙 返回", callback_data='backstart')]]
+        return text, InlineKeyboardMarkup(keyboard)
+    
+    # Format numbers
+    def fmt(num):
+        return f"{num:,.2f}" if isinstance(num, float) else f"{num:,}"
+    
+    # Build text
+    text = f"""
+📊 <b>代理销售统计</b>
+
+<b>🤖 机器人状态</b>
+├─ 状态：{stats['bot_status']}
+├─ 用户名：@{stats['bot_username']}
+└─ 最近活动：{stats['last_heartbeat']}
+
+<b>💰 利润差价设置</b>
+├─ USDT 加价：<code>{fmt(stats['markup_usdt'])}</code> USDT
+└─ RMB 加价：<code>{fmt(stats['markup_rmb'])}</code> 元
+
+<b>💵 利润总额</b>
+├─ 全部时间：<code>{fmt(stats['orders']['all']['profit'])}</code> USDT
+├─ 近24小时：<code>{fmt(stats['orders']['24h']['profit'])}</code> USDT
+└─ 近7天：<code>{fmt(stats['orders']['7d']['profit'])}</code> USDT
+
+<b>👥 机器人使用人数</b>
+├─ 累计用户：<code>{fmt(stats['users']['total'])}</code> 人
+├─ 近24小时：<code>{fmt(stats['users']['24h'])}</code> 人
+└─ 近7天新增：<code>{fmt(stats['users']['7d_new'])}</code> 人
+
+<b>📦 订单数据</b>
+<i>全部时间：</i>
+├─ 订单数：<code>{fmt(stats['orders']['all']['count'])}</code> 单
+├─ 完成数：<code>{fmt(stats['orders']['all']['completed'])}</code> 单
+├─ 取消数：<code>{fmt(stats['orders']['all']['cancelled'])}</code> 单
+└─ 总额：<code>{fmt(stats['orders']['all']['total_amount'])}</code> USDT
+
+<i>近24小时：</i>
+├─ 订单数：<code>{fmt(stats['orders']['24h']['count'])}</code> 单
+├─ 完成数：<code>{fmt(stats['orders']['24h']['completed'])}</code> 单
+├─ 取消数：<code>{fmt(stats['orders']['24h']['cancelled'])}</code> 单
+└─ 总额：<code>{fmt(stats['orders']['24h']['total_amount'])}</code> USDT
+
+<i>近7天：</i>
+├─ 订单数：<code>{fmt(stats['orders']['7d']['count'])}</code> 单
+├─ 完成数：<code>{fmt(stats['orders']['7d']['completed'])}</code> 单
+├─ 取消数：<code>{fmt(stats['orders']['7d']['cancelled'])}</code> 单
+└─ 总额：<code>{fmt(stats['orders']['7d']['total_amount'])}</code> USDT
+
+<b>💳 充值数据</b>
+<i>全部时间：</i>
+├─ USDT(TRC20)：<code>{fmt(stats['recharges']['all']['usdt_trc20']['count'])}</code> 笔 / <code>{fmt(stats['recharges']['all']['usdt_trc20']['amount'])}</code> USDT
+├─ 支付宝：<code>{fmt(stats['recharges']['all']['alipay']['count'])}</code> 笔 / <code>{fmt(stats['recharges']['all']['alipay']['amount'])}</code> 元
+└─ 微信：<code>{fmt(stats['recharges']['all']['wechat']['count'])}</code> 笔 / <code>{fmt(stats['recharges']['all']['wechat']['amount'])}</code> 元
+
+<i>近24小时：</i>
+├─ USDT(TRC20)：<code>{fmt(stats['recharges']['24h']['usdt_trc20']['count'])}</code> 笔 / <code>{fmt(stats['recharges']['24h']['usdt_trc20']['amount'])}</code> USDT
+├─ 支付宝：<code>{fmt(stats['recharges']['24h']['alipay']['count'])}</code> 笔 / <code>{fmt(stats['recharges']['24h']['alipay']['amount'])}</code> 元
+└─ 微信：<code>{fmt(stats['recharges']['24h']['wechat']['count'])}</code> 笔 / <code>{fmt(stats['recharges']['24h']['wechat']['amount'])}</code> 元
+
+<i>近7天：</i>
+├─ USDT(TRC20)：<code>{fmt(stats['recharges']['7d']['usdt_trc20']['count'])}</code> 笔 / <code>{fmt(stats['recharges']['7d']['usdt_trc20']['amount'])}</code> USDT
+├─ 支付宝：<code>{fmt(stats['recharges']['7d']['alipay']['count'])}</code> 笔 / <code>{fmt(stats['recharges']['7d']['alipay']['amount'])}</code> 元
+└─ 微信：<code>{fmt(stats['recharges']['7d']['wechat']['count'])}</code> 笔 / <code>{fmt(stats['recharges']['7d']['wechat']['amount'])}</code> 元
+
+⏰ 更新时间：{stats['updated_at'].strftime('%Y-%m-%d %H:%M:%S')}
+    """.strip()
+    
+    # Build keyboard
+    keyboard = [
+        [InlineKeyboardButton("🔄 刷新", callback_data='agent:sales_stats')],
+        [InlineKeyboardButton("🔙 返回", callback_data='backstart')],
+    ]
+    
+    return text, InlineKeyboardMarkup(keyboard)
+
+
+def agent_sales_stats_callback(update: Update, context: CallbackContext):
+    """Handle agent sales statistics callback."""
+    query = update.callback_query
+    query.answer()
+    user_id = query.from_user.id
+    
+    # Check if user has agent permission
+    uinfo = user.find_one({'user_id': user_id})
+    if not uinfo:
+        safe_edit_message(query, "❌ 用户未找到")
+        return
+    
+    # Get agent_id - could be from context (if agent bot) or from user state
+    agent_id = get_current_agent_id(context)
+    
+    # If not an agent bot, check if user is admin and has agent access
+    if not agent_id:
+        # Check if user is admin and try to get their agent_id
+        agent_doc = agents.find_one({'owner_id': user_id})
+        if agent_doc:
+            agent_id = agent_doc['agent_id']
+        else:
+            safe_edit_message(query, "❌ 无权限访问代理统计")
+            return
+    
+    # Build and render stats
+    try:
+        stats = build_sales_stats(context, agent_id)
+        if not stats:
+            safe_edit_message(query, "❌ 无法加载统计数据")
+            return
+        
+        lang = uinfo.get('lang', 'zh')
+        text, keyboard = render_sales_stats(stats, lang)
+        
+        safe_edit_message(query, text=text, reply_markup=keyboard, parse_mode='HTML')
+        
+        logging.info(f"Agent sales stats viewed by user {user_id} for agent {agent_id}")
+        
+    except Exception as e:
+        logging.error(f"Error showing agent sales stats: {e}")
+        safe_edit_message(query, f"❌ 加载统计数据时出错: {str(e)}")
 
 
 # 🆕 库存预警系统
@@ -6341,12 +6716,11 @@ def settrc20(update: Update, context: CallbackContext):
 def trc20_admin_panel(update: Update, context: CallbackContext):
     """TRC20 payment management admin panel."""
     query = update.callback_query
-    query.answer()
     user_id = query.from_user.id
     
     # Check admin permission
     if user_id not in get_admin_ids():
-        query.edit_message_text("❌ 权限不足")
+        safe_edit_message(query, "❌ 权限不足")
         return
     
     text = """🔐 <b>TRC20 支付管理</b>
@@ -6368,21 +6742,16 @@ def trc20_admin_panel(update: Update, context: CallbackContext):
         [InlineKeyboardButton("🔙 返回控制台", callback_data="backstart")]
     ]
     
-    query.edit_message_text(
-        text=text,
-        parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    safe_edit_message(query, text=text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 def trc20_rescan_txid_prompt(update: Update, context: CallbackContext):
     """Prompt for TXID to rescan."""
     query = update.callback_query
-    query.answer()
     user_id = query.from_user.id
     
     if user_id not in get_admin_ids():
-        query.edit_message_text("❌ 权限不足")
+        safe_edit_message(query, "❌ 权限不足")
         return
     
     text = """🔍 <b>按交易ID重新扫描</b>
@@ -6397,8 +6766,7 @@ def trc20_rescan_txid_prompt(update: Update, context: CallbackContext):
     # Set sign to trigger input handler
     user.update_one({'user_id': user_id}, {"$set": {'sign': 'trc20_rescan_txid'}})
     
-    query.edit_message_text(
-        text=text,
+    safe_edit_message(query, text=text, reply_markup=InlineKeyboardMarkup(keyboard))
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -6407,11 +6775,10 @@ def trc20_rescan_txid_prompt(update: Update, context: CallbackContext):
 def trc20_rescan_order_prompt(update: Update, context: CallbackContext):
     """Prompt for order ID to rescan."""
     query = update.callback_query
-    query.answer()
     user_id = query.from_user.id
     
     if user_id not in get_admin_ids():
-        query.edit_message_text("❌ 权限不足")
+        safe_edit_message(query, "❌ 权限不足")
         return
     
     text = """📋 <b>按订单号重新扫描</b>
@@ -6426,25 +6793,20 @@ def trc20_rescan_order_prompt(update: Update, context: CallbackContext):
     # Set sign to trigger input handler
     user.update_one({'user_id': user_id}, {"$set": {'sign': 'trc20_rescan_order'}})
     
-    query.edit_message_text(
-        text=text,
-        parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    safe_edit_message(query, text=text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 def trc20_scan_all_orders(update: Update, context: CallbackContext):
     """Scan all pending orders and try to match payments."""
     query = update.callback_query
-    query.answer()
     user_id = query.from_user.id
     
     if user_id not in get_admin_ids():
-        query.edit_message_text("❌ 权限不足")
+        safe_edit_message(query, "❌ 权限不足")
         return
     
     # Show processing message
-    query.edit_message_text("⏳ <b>正在扫描待处理订单...</b>", parse_mode='HTML')
+    safe_edit_message(query, "⏳ <b>正在扫描待处理订单...</b>")
     
     try:
         from trc20_processor import payment_processor
@@ -6462,17 +6824,13 @@ def trc20_scan_all_orders(update: Update, context: CallbackContext):
         
         keyboard = [[InlineKeyboardButton("🔙 返回", callback_data="trc20_admin")]]
         
-        query.edit_message_text(
-            text=text,
-            parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        safe_edit_message(query, text=text, reply_markup=InlineKeyboardMarkup(keyboard))
         
     except Exception as e:
         logging.error(f"Error scanning orders: {e}")
-        query.edit_message_text(
+        safe_edit_message(
+            query,
             f"❌ <b>扫描失败</b>\n\n错误: {str(e)}",
-            parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("🔙 返回", callback_data="trc20_admin")
             ]])
@@ -6482,11 +6840,10 @@ def trc20_scan_all_orders(update: Update, context: CallbackContext):
 def trc20_pending_stats(update: Update, context: CallbackContext):
     """Show statistics for pending orders."""
     query = update.callback_query
-    query.answer()
     user_id = query.from_user.id
     
     if user_id not in get_admin_ids():
-        query.edit_message_text("❌ 权限不足")
+        safe_edit_message(query, "❌ 权限不足")
         return
     
     try:
@@ -6527,17 +6884,13 @@ def trc20_pending_stats(update: Update, context: CallbackContext):
             [InlineKeyboardButton("🔙 返回", callback_data="trc20_admin")]
         ]
         
-        query.edit_message_text(
-            text=text,
-            parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        safe_edit_message(query, text=text, reply_markup=InlineKeyboardMarkup(keyboard))
         
     except Exception as e:
         logging.error(f"Error getting stats: {e}")
-        query.edit_message_text(
+        safe_edit_message(
+            query,
             f"❌ <b>获取统计失败</b>\n\n错误: {str(e)}",
-            parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("🔙 返回", callback_data="trc20_admin")
             ]])
@@ -11562,6 +11915,8 @@ def register_common_handlers(dispatcher, job_queue):
     # 🆕 销售统计相关回调处理器
     dispatcher.add_handler(CallbackQueryHandler(detailed_sales_report, pattern='^detailed_sales_report$'))
     dispatcher.add_handler(CallbackQueryHandler(sales_trend_analysis, pattern='^sales_trend_analysis$'))
+    # 🆕 Agent sales statistics callback
+    dispatcher.add_handler(CallbackQueryHandler(agent_sales_stats_callback, pattern='^agent:sales_stats$'))
     dispatcher.add_handler(CallbackQueryHandler(addhb, pattern='addhb'))
     dispatcher.add_handler(CallbackQueryHandler(lqhb, pattern='lqhb '))
     dispatcher.add_handler(CallbackQueryHandler(xzhb, pattern='xzhb '))

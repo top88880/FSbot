@@ -225,61 +225,8 @@ def get_agent_links(context: CallbackContext) -> dict:
         tutorial_link, notify_channel_id, extra_links
         Returns None for each if not set or not an agent bot.
     """
-    agent_id = get_current_agent_id(context)
-    if not agent_id:
-        return {
-            'customer_service': None,
-            'official_channel': None,
-            'restock_group': None,
-            'tutorial_link': None,
-            'notify_channel_id': None,
-            'extra_links': []
-        }
-    
-    try:
-        agent = agents.find_one({'agent_id': agent_id})
-        if not agent:
-            return {
-                'customer_service': None,
-                'official_channel': None,
-                'restock_group': None,
-                'tutorial_link': None,
-                'notify_channel_id': None,
-                'extra_links': []
-            }
-        
-        # Check for new settings structure first, then fall back to old links structure
-        settings = agent.get('settings', {})
-        if settings:
-            return {
-                'customer_service': settings.get('customer_service'),
-                'official_channel': settings.get('official_channel'),
-                'restock_group': settings.get('restock_group'),
-                'tutorial_link': settings.get('tutorial_link'),
-                'notify_channel_id': settings.get('notify_channel_id'),
-                'extra_links': settings.get('extra_links', [])
-            }
-        else:
-            # Fall back to old links structure for backward compatibility
-            links = agent.get('links', {})
-            return {
-                'customer_service': links.get('support_link'),
-                'official_channel': links.get('channel_link'),
-                'restock_group': links.get('announcement_link'),
-                'tutorial_link': None,
-                'notify_channel_id': None,
-                'extra_links': links.get('extra_links', [])
-            }
-    except Exception as e:
-        logging.error(f"Error getting agent links: {e}")
-        return {
-            'customer_service': None,
-            'official_channel': None,
-            'restock_group': None,
-            'tutorial_link': None,
-            'notify_channel_id': None,
-            'extra_links': []
-        }
+    # Use the bot_links helper for consistent link retrieval
+    return get_links_for_child_agent(context)
 
 def record_agent_profit(context: CallbackContext, order_doc: dict):
     """Record profit for agent after successful order completion.
@@ -336,13 +283,14 @@ def get_customer_service_link(context: CallbackContext) -> str:
     Returns:
         Customer service link/username
     """
-    agent_links = get_agent_links(context)
+    # Use bot_links helper for consistency
+    agent_links = get_links_for_child_agent(context)
     customer_service = agent_links.get('customer_service')
     
     if customer_service:
         return customer_service
     
-    # Return default
+    # Return default from env vars
     return os.getenv('CUSTOMER_SERVICE', '@lwmmm')
 
 def get_channel_link(context: CallbackContext) -> str:
@@ -354,13 +302,14 @@ def get_channel_link(context: CallbackContext) -> str:
     Returns:
         Channel link/username
     """
-    agent_links = get_agent_links(context)
+    # Use bot_links helper for consistency
+    agent_links = get_links_for_child_agent(context)
     official_channel = agent_links.get('official_channel')
     
     if official_channel:
         return official_channel
     
-    # Return default
+    # Return default from env vars
     return os.getenv('OFFICIAL_CHANNEL', '@XCZHCS')
 
 def get_announcement_link(context: CallbackContext) -> str:
@@ -372,13 +321,14 @@ def get_announcement_link(context: CallbackContext) -> str:
     Returns:
         Restock group link or default
     """
-    agent_links = get_agent_links(context)
+    # Use bot_links helper for consistency
+    agent_links = get_links_for_child_agent(context)
     restock_group = agent_links.get('restock_group')
     
     if restock_group:
         return restock_group
     
-    # Return default
+    # Return default from env vars
     return os.getenv('RESTOCK_GROUP', 'https://t.me/+EeTF1qOe_MoyMzQ0')
 
 

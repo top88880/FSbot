@@ -275,6 +275,107 @@ def record_agent_profit(context: CallbackContext, order_doc: dict):
     except Exception as e:
         logging.error(f"Error recording agent profit: {e}")
 
+
+def prepare_buyer_message(context: CallbackContext, fstext: str, lang: str, 
+                          user_id: int, erjiprojectname: str, gmsl: int, 
+                          zxymoney: float, bianhao: str) -> tuple:
+    """Prepare buyer-facing message based on agent settings.
+    
+    For child agents:
+    - If buyer_notify is enabled and template is set, use template
+    - Otherwise, use sanitized product tip
+    - Never include main bot env contacts
+    
+    For main bot:
+    - Use fstext as-is (may contain env contacts)
+    - Don't append extra contacts block
+    
+    Args:
+        context: CallbackContext to get agent info
+        fstext: Product tip text from database
+        lang: User language ('zh' or 'en')
+        user_id: Buyer user ID
+        erjiprojectname: Product name
+        gmsl: Quantity purchased
+        zxymoney: Total price
+        bianhao: Order number
+        
+    Returns:
+        Tuple of (message_text, should_send_buyer_reminder)
+        - message_text: The text to send to buyer
+        - should_send_buyer_reminder: False (we handle it here, not in dabaohao)
+    """
+    agent_id = context.bot_data.get('agent_id')
+    
+    if not agent_id:
+        # Main bot: use fstext as-is, don't append extra contacts
+        return (fstext, False)
+    
+    # Child agent: check buyer_notify settings
+    try:
+        agent = agents.find_one({'agent_id': agent_id})
+        if agent:
+            settings = agent.get('settings', {})
+            buyer_notify_enabled = settings.get('buyer_notify_enabled', False)
+            buyer_notify_template = settings.get('buyer_notify_template', '').strip()
+            
+            if buyer_notify_enabled and buyer_notify_template:
+                # Use buyer reminder template instead of product tip
+                agent_name = agent.get('agent_name', context.bot_data.get('bot_username', 'bot'))
+                bot_username = context.bot_data.get('bot_username', 'bot')
+                contacts_block_agent = build_agent_contacts_block(settings, lang)
+                
+                # Get product name for template
+                try:
+                    ejfl_doc = ejfl.find_one({'projectname': erjiprojectname})
+                    if ejfl_doc:
+                        yijiid = ejfl_doc.get('uid')
+                        yiji_doc = fenlei.find_one({'uid': yijiid}) if yijiid else None
+                        category_name = yiji_doc.get('projectname', '') if yiji_doc else ''
+                        product_name_full = f"{category_name}/{erjiprojectname}" if category_name else erjiprojectname
+                    else:
+                        product_name_full = erjiprojectname
+                except (KeyError, TypeError, AttributeError) as db_error:
+                    logging.warning(f"Error getting product name: {db_error}")
+                    product_name_full = erjiprojectname
+                
+                # Perform template substitution
+                # Note: Template is admin-configured in agents_admin.py
+                # Validate template to prevent format string attacks
+                try:
+                    buyer_message = buyer_notify_template.format(
+                        agent_name=agent_name,
+                        bot_username=bot_username,
+                        contacts_block_agent=contacts_block_agent,
+                        order_sn=bianhao,
+                        product_name=product_name_full,
+                        qty=gmsl,
+                        total=f"{zxymoney:.2f}"
+                    )
+                except (KeyError, ValueError, IndexError) as template_error:
+                    logging.error(f"Invalid buyer notify template format: {template_error}")
+                    # Fallback to sanitized product tip if template is invalid
+                    fstext_clean = sanitize_buyer_tip(fstext)
+                    contacts_block = format_contacts_block_for_child(context, lang)
+                    buyer_message = f"{fstext_clean}\n\n{contacts_block}" if contacts_block else fstext_clean
+                
+                return (buyer_message, False)
+    except (KeyError, TypeError, AttributeError) as e:
+        logging.error(f"Error preparing buyer notify template: {e}")
+    
+    # Child agent: use sanitized product tip
+    fstext_clean = sanitize_buyer_tip(fstext)
+    
+    # Append agent-specific contact information if configured
+    contacts_block = format_contacts_block_for_child(context, lang)
+    if contacts_block:
+        buyer_message = f"{fstext_clean}\n\n{contacts_block}"
+    else:
+        buyer_message = fstext_clean
+    
+    return (buyer_message, False)
+
+
 def get_customer_service_link(context: CallbackContext) -> str:
     """Get customer service link - agent-specific if available, else default.
     
@@ -7130,13 +7231,55 @@ def is_number(s):
 
     return False
 
-def dabaohao(context, user_id, folder_names, leixing, nowuid, erjiprojectname, fstext, yssj):
+def dabaohao(context, user_id, folder_names, leixing, nowuid, erjiprojectname, fstext, yssj, lang='zh'):
+    """Complete order delivery: send buyer message and files.
+    
+    Args:
+        context: CallbackContext
+        user_id: Buyer user ID
+        folder_names: List of account/folder names to deliver
+        leixing: Product type (协议号, 直登号, API链接, txt文本)
+        nowuid: Product UID
+        erjiprojectname: Product name
+        fstext: Product tip text
+        yssj: Order timestamp
+        lang: User language (default 'zh')
+    """
     current_time = datetime.now()
     formatted_time = current_time.strftime("%Y%m%d%H%M%S")
     timestamp = str(current_time.timestamp()).replace(".", "")
     bianhao = formatted_time + timestamp
     timer = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
     count = len(folder_names)
+    
+    # Calculate order total for template
+    try:
+        ejfl_doc = ejfl.find_one({'nowuid': nowuid})
+        base_price = Decimal(str(ejfl_doc.get('money', 0))) if ejfl_doc else Decimal('0')
+        agent_markup = get_agent_markup_usdt(context)
+        agent_price = base_price + agent_markup
+        order_total = float(agent_price) * count
+    except (KeyError, TypeError, ValueError, ArithmeticError) as price_error:
+        logging.warning(f"Error calculating order total: {price_error}")
+        order_total = 0.0
+    
+    # Send buyer-facing message (template or sanitized tip)
+    try:
+        buyer_message, _ = prepare_buyer_message(
+            context, fstext, lang, user_id, erjiprojectname, 
+            count, order_total, bianhao
+        )
+        if buyer_message:
+            keyboard = [[InlineKeyboardButton('✅已读（点击销毁此消息）', callback_data=f'close {user_id}')]]
+            context.bot.send_message(
+                chat_id=user_id,
+                text=buyer_message,
+                parse_mode='HTML',
+                disable_web_page_preview=True,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+    except Exception as e:
+        logging.error(f"Error sending buyer message: {e}")
 
     order_doc = None
     if leixing == '协议号':
@@ -7240,40 +7383,6 @@ def dabaohao(context, user_id, folder_names, leixing, nowuid, erjiprojectname, f
                 
                 send_order_group_notification(context, order_data, user_lang)
                 
-                # Send buyer reminder if enabled and configured
-                try:
-                    agent = agents.find_one({'agent_id': agent_id})
-                    if agent:
-                        settings = agent.get('settings', {})
-                        buyer_notify_enabled = settings.get('buyer_notify_enabled', False)
-                        buyer_notify_template = settings.get('buyer_notify_template', '').strip()
-                        
-                        if buyer_notify_enabled and buyer_notify_template:
-                            # Build variables for template substitution
-                            agent_name = agent.get('agent_name', bot_username)
-                            contacts_block_agent = build_agent_contacts_block(settings, user_lang)
-                            
-                            # Perform template substitution
-                            buyer_reminder = buyer_notify_template.format(
-                                agent_name=agent_name,
-                                bot_username=bot_username,
-                                contacts_block_agent=contacts_block_agent,
-                                order_sn=bianhao,
-                                product_name=product_name_full,
-                                qty=count,
-                                total=f"{order_total:.2f}"
-                            )
-                            
-                            # Send buyer reminder
-                            context.bot.send_message(
-                                chat_id=user_id,
-                                text=buyer_reminder,
-                                parse_mode='HTML',
-                                disable_web_page_preview=True
-                            )
-                            logging.info(f"Sent buyer reminder to user {user_id} for agent {agent_id}")
-                except Exception as buyer_notif_error:
-                    logging.error(f"Failed to send buyer reminder notification: {buyer_notif_error}")
         except Exception as notif_error:
             logging.error(f"Failed to send agent group order notification: {notif_error}")
 
@@ -7350,24 +7459,8 @@ def qrgaimai(update: Update, context: CallbackContext):
 
             # hb.update_many(query_condition, update_data, limit=gmsl)
 
-            # Sanitize buyer message to remove any env-based contact lines (for child agents)
-            agent_id = context.bot_data.get('agent_id')
-            if agent_id:
-                # Child agent: sanitize the stored text to remove main-bot contacts
-                fstext_clean = sanitize_buyer_tip(fstext)
-            else:
-                # Main bot: use text as-is
-                fstext_clean = fstext
-            
-            # Append agent contact information to buyer message
-            contacts_block = format_contacts_block_for_child(context, lang)
-            buyer_message = fstext_clean
-            if contacts_block:
-                buyer_message = f"{fstext_clean}\n\n{contacts_block}"
-
-            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
-                                     reply_markup=InlineKeyboardMarkup(keyboard))
-            fstext = f'''
+            # Send admin notifications
+            admin_fstext = f'''
 用户: <a href="tg://user?id={user_id}">{fullname}</a> @{username}
 用户ID: <code>{user_id}</code>
 购买商品: {yijiprojectname}/{erjiprojectname}
@@ -7376,12 +7469,12 @@ def qrgaimai(update: Update, context: CallbackContext):
             '''
             for i in list(user.find({"state": '4'})):
                 try:
-                    context.bot.send_message(chat_id=i['user_id'], text=fstext, parse_mode='HTML')
+                    context.bot.send_message(chat_id=i['user_id'], text=admin_fstext, parse_mode='HTML')
                 except:
                     pass
 
             Timer(1, dabaohao,
-                  args=[context, user_id, folder_names, '协议号', nowuid, erjiprojectname, fstext, timer]).start()
+                  args=[context, user_id, folder_names, '协议号', nowuid, erjiprojectname, fstext, timer, lang]).start()
             # shijiancuo = int(time.time())
             # zip_filename = f"./协议号发货/{user_id}_{shijiancuo}.zip"
             # with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -7419,14 +7512,6 @@ def qrgaimai(update: Update, context: CallbackContext):
             user.update_one({'user_id': user_id}, {"$set": {'sign': 0}})
             del_message(query.message)
 
-            # Append agent contact information to buyer message
-            contacts_block = format_contacts_block_for_child(context, lang)
-            buyer_message = fstext
-            if contacts_block:
-                buyer_message = f"{fstext}\n\n{contacts_block}"
-
-            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
-                                     reply_markup=InlineKeyboardMarkup(keyboard))
             folder_names = []
             for j in list(hb.find({"nowuid": nowuid, 'state': 0, 'leixing': '谷歌'}, limit=gmsl)):
                 projectname = j['projectname']
@@ -7440,12 +7525,12 @@ def qrgaimai(update: Update, context: CallbackContext):
                 fste23xt = f'账户: {us1}\n密码: {us2}\n子邮件: {us3}\n'
                 folder_names.append(fste23xt)
 
-            folder_names = '\n'.join(folder_names)
+            folder_names_content = '\n'.join(folder_names)
 
             shijiancuo = int(time.time())
             zip_filename = f"./谷歌发货/{user_id}_{shijiancuo}.txt"
             with open(zip_filename, "w") as f:
-                f.write(folder_names)
+                f.write(folder_names_content)
             current_time = datetime.now()
 
             # 将当前时间格式化为字符串
@@ -7456,6 +7541,23 @@ def qrgaimai(update: Update, context: CallbackContext):
 
             # 组合编号
             bianhao = formatted_time + timestamp
+            
+            # Prepare and send buyer message (template or sanitized tip)
+            try:
+                buyer_message, _ = prepare_buyer_message(
+                    context, fstext, lang, user_id, erjiprojectname,
+                    gmsl, zxymoney, bianhao
+                )
+                if buyer_message:
+                    context.bot.send_message(
+                        chat_id=user_id,
+                        text=buyer_message,
+                        parse_mode='HTML',
+                        disable_web_page_preview=True,
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+            except Exception as e:
+                logging.error(f"Error sending buyer message for 谷歌: {e}")
             timer = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
             goumaijilua('谷歌', bianhao, user_id, erjiprojectname, zip_filename, fstext, timer)
 
@@ -7483,14 +7585,6 @@ def qrgaimai(update: Update, context: CallbackContext):
             user.update_one({'user_id': user_id}, {"$set": {'sign': 0}})
             del_message(query.message)
 
-            # Append agent contact information to buyer message
-            contacts_block = format_contacts_block_for_child(context, lang)
-            buyer_message = fstext
-            if contacts_block:
-                buyer_message = f"{fstext}\n\n{contacts_block}"
-
-            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
-                                     reply_markup=InlineKeyboardMarkup(keyboard))
             folder_names = []
             for j in list(hb.find({"nowuid": nowuid, 'state': 0}, limit=gmsl)):
                 projectname = j['projectname']
@@ -7516,13 +7610,31 @@ def qrgaimai(update: Update, context: CallbackContext):
 
             # 组合编号
             bianhao = formatted_time + timestamp
+            
+            # Prepare and send buyer message (template or sanitized tip)
+            try:
+                buyer_message, _ = prepare_buyer_message(
+                    context, fstext, lang, user_id, erjiprojectname,
+                    gmsl, zxymoney, bianhao
+                )
+                if buyer_message:
+                    context.bot.send_message(
+                        chat_id=user_id,
+                        text=buyer_message,
+                        parse_mode='HTML',
+                        disable_web_page_preview=True,
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+            except Exception as e:
+                logging.error(f"Error sending buyer message for API: {e}")
+            
             timer = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
             link_text = '\n'.join(folder_names)  # API链接内容应该是账号列表
             goumaijilua('API链接', bianhao, user_id, erjiprojectname, link_text, fstext, timer)
 
             query.message.reply_document(open(zip_filename, "rb"))
 
-            fstext = f'''
+            admin_fstext = f'''
 用户: <a href="tg://user?id={user_id}">{fullname}</a> @{username}
 用户ID: <code>{user_id}</code>
 购买商品: {yijiprojectname}/{erjiprojectname}
@@ -7531,7 +7643,7 @@ def qrgaimai(update: Update, context: CallbackContext):
             '''
             for i in list(user.find({"state": '4'})):
                 try:
-                    context.bot.send_message(chat_id=i['user_id'], text=fstext, parse_mode='HTML')
+                    context.bot.send_message(chat_id=i['user_id'], text=admin_fstext, parse_mode='HTML')
                 except:
                     pass
         elif fhtype == '会员链接':
@@ -7549,16 +7661,7 @@ def qrgaimai(update: Update, context: CallbackContext):
                 hb.update_one({'hbid': hbid}, {"$set": {'state': 1, 'yssj': timer, 'gmid': user_id}})
                 folder_names.append(projectname)
 
-            # Append agent contact information to buyer message
-            contacts_block = format_contacts_block_for_child(context, lang)
-            buyer_message = fstext
-            if contacts_block:
-                buyer_message = f"{fstext}\n\n{contacts_block}"
-
-            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
-                                     reply_markup=InlineKeyboardMarkup(keyboard))
-
-            folder_names = '\n'.join(folder_names)
+            folder_names_content = '\n'.join(folder_names)
 
             current_time = datetime.now()
 
@@ -7570,12 +7673,30 @@ def qrgaimai(update: Update, context: CallbackContext):
 
             # 组合编号
             bianhao = formatted_time + timestamp
+            
+            # Prepare and send buyer message (template or sanitized tip)
+            try:
+                buyer_message, _ = prepare_buyer_message(
+                    context, fstext, lang, user_id, erjiprojectname,
+                    gmsl, zxymoney, bianhao
+                )
+                if buyer_message:
+                    context.bot.send_message(
+                        chat_id=user_id,
+                        text=buyer_message,
+                        parse_mode='HTML',
+                        disable_web_page_preview=True,
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+            except Exception as e:
+                logging.error(f"Error sending buyer message for 会员链接: {e}")
+            
             timer = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
-            goumaijilua('会员链接', bianhao, user_id, erjiprojectname, folder_names, fstext, timer, gmsl)
+            goumaijilua('会员链接', bianhao, user_id, erjiprojectname, folder_names_content, fstext, timer, gmsl)
 
 
 
-            context.bot.send_message(chat_id=user_id, text=folder_names, disable_web_page_preview=True)
+            context.bot.send_message(chat_id=user_id, text=folder_names_content, disable_web_page_preview=True)
 
             fstext = f'''
 用户: <a href="tg://user?id={user_id}">{fullname}</a> @{username}
@@ -7620,25 +7741,8 @@ def qrgaimai(update: Update, context: CallbackContext):
             update_data = {"$set": {'state': 1, 'yssj': timer, 'gmid': user_id}}
             hb.update_many({"_id": {"$in": document_ids}}, update_data)
 
-            # Sanitize buyer message to remove any env-based contact lines (for child agents)
-            agent_id = context.bot_data.get('agent_id')
-            if agent_id:
-                # Child agent: sanitize the stored text to remove main-bot contacts
-                fstext_clean = sanitize_buyer_tip(fstext)
-            else:
-                # Main bot: use text as-is
-                fstext_clean = fstext
-            
-            # Append agent contact information to buyer message
-            contacts_block = format_contacts_block_for_child(context, lang)
-            buyer_message = fstext_clean
-            if contacts_block:
-                buyer_message = f"{fstext_clean}\n\n{contacts_block}"
-
-            context.bot.send_message(chat_id=user_id, text=buyer_message, parse_mode='HTML', disable_web_page_preview=True,
-                                     reply_markup=InlineKeyboardMarkup(keyboard))
-
-            fstext = f'''
+            # Send admin notifications
+            admin_fstext = f'''
 用户: <a href="tg://user?id={user_id}">{fullname}</a> @{username}
 用户ID: <code>{user_id}</code>
 购买商品: {yijiprojectname}/{erjiprojectname}
@@ -7647,12 +7751,12 @@ def qrgaimai(update: Update, context: CallbackContext):
             '''
             for i in list(user.find({"state": '4'})):
                 try:
-                    context.bot.send_message(chat_id=i['user_id'], text=fstext, parse_mode='HTML')
+                    context.bot.send_message(chat_id=i['user_id'], text=admin_fstext, parse_mode='HTML')
                 except:
                     pass
 
             Timer(1, dabaohao,
-                  args=[context, user_id, folder_names, '直登号', nowuid, erjiprojectname, fstext, timer]).start()
+                  args=[context, user_id, folder_names, '直登号', nowuid, erjiprojectname, fstext, timer, lang]).start()
             # shijiancuo = int(time.time())
             # zip_filename = f"./发货/{user_id}_{shijiancuo}.zip"
             # with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zipf:

@@ -34,19 +34,22 @@ def sanitize_buyer_tip(text: str) -> str:
     
     # Define patterns for contact lines to remove
     # These match lines that typically contain contact information
-    # We use a flexible approach to handle emoji variations
+    # We use word boundaries and specific patterns to avoid false positives
+    # The patterns are designed to match common contact line formats while
+    # avoiding excessive backtracking
     patterns = [
-        # Lines containing contact keywords with colon (very broad)
-        r'^\s*.*客服\s*[：:].+$',
-        r'^\s*.*频道\s*[：:].+$',
-        r'^\s*.*官方频道\s*[：:].+$',
-        r'^\s*.*补货通知群\s*[：:].+$',
-        r'^\s*.*教程\s*[：:].+$',
-        r'^\s*.*Support\s*[：:].+$',
-        r'^\s*.*Channel\s*[：:].+$',
-        r'^\s*.*Official\s+Channel\s*[：:].+$',
-        r'^\s*.*Restock\s+Group\s*[：:].+$',
-        r'^\s*.*Tutorial\s*[：:].+$',
+        # Lines containing contact keywords with colon - more specific patterns
+        # Format: [optional emoji/chars] + keyword + colon + content
+        r'^\s*\S{0,3}\s*客服\s*[：:]\s*.+$',
+        r'^\s*\S{0,3}\s*频道\s*[：:]\s*.+$',
+        r'^\s*\S{0,3}\s*官方频道\s*[：:]\s*.+$',
+        r'^\s*\S{0,3}\s*补货通知群\s*[：:]\s*.+$',
+        r'^\s*\S{0,3}\s*教程\s*[：:]\s*.+$',
+        r'^\s*\S{0,3}\s*Support\s*[：:]\s*.+$',
+        r'^\s*\S{0,3}\s*Channel\s*[：:]\s*.+$',
+        r'^\s*\S{0,3}\s*Official\s+Channel\s*[：:]\s*.+$',
+        r'^\s*\S{0,3}\s*Restock\s+Group\s*[：:]\s*.+$',
+        r'^\s*\S{0,3}\s*Tutorial\s*[：:]\s*.+$',
         
         # Separator lines that often accompany contact blocks
         r'^\s*[➖\-─]{8,}\s*$',

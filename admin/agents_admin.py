@@ -928,12 +928,12 @@ def admin_purchase_notif_callback(update: Update, context: CallbackContext):
         settings = agent.get('settings', {})
         
         # Get current notification settings
-        enable_purchase_notifications = settings.get('enable_purchase_notifications', False)
-        purchase_notification_template = settings.get('purchase_notification_template')
+        buyer_notify_enabled = settings.get('buyer_notify_enabled', False)
+        buyer_notify_template = settings.get('buyer_notify_template')
         
         # Build status text
-        status = t_admin(lang, 'enabled') if enable_purchase_notifications else t_admin(lang, 'disabled')
-        template_text = purchase_notification_template if purchase_notification_template else t_admin(lang, 'default_template')
+        status = t_admin(lang, 'enabled') if buyer_notify_enabled else t_admin(lang, 'disabled')
+        template_text = buyer_notify_template if buyer_notify_template else t_admin(lang, 'default_template')
         
         # Truncate template if too long
         if len(template_text) > 200:
@@ -950,7 +950,7 @@ def admin_purchase_notif_callback(update: Update, context: CallbackContext):
 <b>{t_admin(lang, 'notif_note')}:</b> {t_admin(lang, 'notif_note_text')}"""
         
         # Build keyboard
-        toggle_button_text = t_admin(lang, 'disable_purchase_notif') if enable_purchase_notifications else t_admin(lang, 'enable_purchase_notif')
+        toggle_button_text = t_admin(lang, 'disable_purchase_notif') if buyer_notify_enabled else t_admin(lang, 'enable_purchase_notif')
         
         keyboard = [
             [InlineKeyboardButton(toggle_button_text, callback_data=f"admin_purchase_notif_toggle {agent_id}")],
@@ -998,7 +998,7 @@ def admin_purchase_notif_toggle_callback(update: Update, context: CallbackContex
             return
         
         settings = agent.get('settings', {})
-        current_status = settings.get('enable_purchase_notifications', False)
+        current_status = settings.get('buyer_notify_enabled', False)
         new_status = not current_status
         
         # Update setting
@@ -1006,7 +1006,7 @@ def admin_purchase_notif_toggle_callback(update: Update, context: CallbackContex
             {"agent_id": agent_id},
             {
                 "$set": {
-                    "settings.enable_purchase_notifications": new_status,
+                    "settings.buyer_notify_enabled": new_status,
                     "updated_at": datetime.now()
                 }
             }
@@ -1038,40 +1038,43 @@ def admin_purchase_notif_template_callback(update: Update, context: CallbackCont
     
     context.user_data['admin_setting_flow'] = {
         'agent_id': agent_id,
-        'field': 'purchase_notification_template',
+        'field': 'buyer_notify_template',
         'field_name': field_name,
         'state': 'awaiting_template_input'
     }
     
-    # Build template variables list
-    variables_list = """• {agent_bot_username}
-• {order_sn}
-• {profit_per_item}
-• {ts}
-• {buyer_id}
-• {product_name}
-• {qty}
-• {order_total}
-• {unit_price}
-• {agent_price}
-• {base_price}
-• {before_balance}
-• {after_balance}
-• {profit_total}"""
+    # Build template variables list for buyer notifications
+    variables_list = """• {agent_name} - 代理名称
+• {bot_username} - 机器人用户名
+• {contacts_block_agent} - 代理联系方式
+• {order_sn} - 订单号
+• {product_name} - 商品名称
+• {qty} - 数量
+• {total} - 总额"""
     
     # Build example template
     if lang == 'zh':
-        example_template = """🛒 新订单
+        example_template = """✅ 购买成功！
+
 订单号: {order_sn}
 商品: {product_name}
 数量: {qty}
-利润: {profit_total}U"""
+金额: {total} USDT
+
+感谢您的购买！如有问题请联系客服。
+
+{contacts_block_agent}"""
     else:
-        example_template = """🛒 New Order
+        example_template = """✅ Purchase Successful!
+
 Order ID: {order_sn}
 Product: {product_name}
 Quantity: {qty}
-Profit: {profit_total}U"""
+Amount: {total} USDT
+
+Thank you for your purchase! Contact support if you have questions.
+
+{contacts_block_agent}"""
     
     text = f"""<b>{t_admin(lang, 'edit_template_title')}</b>
 

@@ -394,15 +394,9 @@ def erjifenleibiao(uid, nowuid, projectname, row):
         'nowuid': nowuid,
         'projectname': projectname,
         'row': row,
-        'text': f'''
+        'text': '''
 <b>♻️ 账号正在打包，请稍等片刻！
-‼️ 二级密码看文件夹里 json
-
-➖➖➖➖➖➖➖➖
-➖➖➖➖➖➖➖➖
-☎️ 客服：{CUSTOMER_SERVICE}
-📣 频道：{RESTOCK_GROUP}
-➖➖➖➖➖➖➖➖</b>
+‼️ 二级密码看文件夹里 json</b>
         ''',
         'money': 0
     })

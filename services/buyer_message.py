@@ -33,43 +33,23 @@ def sanitize_buyer_tip(text: str) -> str:
         return text
     
     # Define patterns for contact lines to remove
-    # This covers various formats and languages
+    # These match lines that typically contain contact information
+    # We use a flexible approach to handle emoji variations
     patterns = [
-        # Chinese variants with emojis
-        r'^[☎️📞]\s*客服[：:].+$',
-        r'^[📣📢]\s*频道[：:].+$',
-        r'^[📣📢]\s*官方频道[：:].+$',
-        r'^[🔔💬]\s*补货通知群[：:].+$',
-        r'^[📖📚]\s*教程[：:].+$',
-        
-        # English variants with emojis
-        r'^[☎️📞]\s*Support[：:].+$',
-        r'^[📣📢]\s*Channel[：:].+$',
-        r'^[📣📢]\s*Official\s+Channel[：:].+$',
-        r'^[🔔💬]\s*Restock\s+Group[：:].+$',
-        r'^[📖📚]\s*Tutorial[：:].+$',
-        
-        # Generic bold patterns (common in templates)
-        r'^<b>\s*[☎️📞]\s*客服[：:].+</b>$',
-        r'^<b>\s*[📣📢]\s*频道[：:].+</b>$',
-        r'^<b>\s*[📣📢]\s*官方频道[：:].+</b>$',
-        r'^<b>\s*[🔔💬]\s*补货通知群[：:].+</b>$',
-        r'^<b>\s*[☎️📞]\s*Support[：:].+</b>$',
-        r'^<b>\s*[📣📢]\s*Channel[：:].+</b>$',
-        r'^<b>\s*[📣📢]\s*Official\s+Channel[：:].+</b>$',
-        
-        # Without emojis (fallback patterns)
-        r'^客服[：:].+$',
-        r'^频道[：:].+$',
-        r'^官方频道[：:].+$',
-        r'^补货通知群[：:].+$',
-        r'^Support[：:].+$',
-        r'^Channel[：:].+$',
-        r'^Official\s+Channel[：:].+$',
-        r'^Restock\s+Group[：:].+$',
+        # Lines containing contact keywords with colon (very broad)
+        r'^\s*.*客服\s*[：:].+$',
+        r'^\s*.*频道\s*[：:].+$',
+        r'^\s*.*官方频道\s*[：:].+$',
+        r'^\s*.*补货通知群\s*[：:].+$',
+        r'^\s*.*教程\s*[：:].+$',
+        r'^\s*.*Support\s*[：:].+$',
+        r'^\s*.*Channel\s*[：:].+$',
+        r'^\s*.*Official\s+Channel\s*[：:].+$',
+        r'^\s*.*Restock\s+Group\s*[：:].+$',
+        r'^\s*.*Tutorial\s*[：:].+$',
         
         # Separator lines that often accompany contact blocks
-        r'^[➖\-─]{8,}$',
+        r'^\s*[➖\-─]{8,}\s*$',
     ]
     
     # Combine all patterns into one regex with MULTILINE and IGNORECASE flags

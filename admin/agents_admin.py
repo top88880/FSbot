@@ -73,7 +73,7 @@ ADMIN_I18N = {
         'template_variables': '支持的变量',
         'template_html_support': '支持HTML格式',
         'template_html_text': '可以使用 <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;code&gt;</code> 等HTML标签美化消息。',
-        'template_clear': '发送 <code>清除</code> 恢复使用默认模板',
+        'template_clear': '发送 <code>清除</code> 或 <code>clear</code> 恢复使用默认模板',
         'template_example': '示例模板',
         'cancel': '❌ 取消',
         'notif_toggle_success': '购买通知已{status}',
@@ -144,7 +144,7 @@ ADMIN_I18N = {
         'template_variables': 'Supported Variables',
         'template_html_support': 'HTML Support',
         'template_html_text': 'You can use <code>&lt;b&gt;</code>, <code>&lt;i&gt;</code>, <code>&lt;code&gt;</code> and other HTML tags to format the message.',
-        'template_clear': 'Send <code>清除</code> to restore default template',
+        'template_clear': 'Send <code>clear</code> or <code>清除</code> to restore default template',
         'template_example': 'Example Template',
         'cancel': '❌ Cancel',
         'notif_toggle_success': 'Purchase notifications {status}',
@@ -707,7 +707,7 @@ def admin_set_cs_callback(update: Update, context: CallbackContext):
 • 多个客服: <code>@cs1 @cs2 @cs3</code> (用空格分隔)
 • 客服链接: <code>https://t.me/customer_service</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -740,7 +740,7 @@ def admin_set_official_callback(update: Update, context: CallbackContext):
 • 频道用户名: <code>@yourchannel</code>
 • 频道链接: <code>https://t.me/yourchannel</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -774,7 +774,7 @@ def admin_set_restock_callback(update: Update, context: CallbackContext):
 • 群组链接: <code>https://t.me/yourgroup</code>
 • 群组邀请链接: <code>https://t.me/+xxxxx</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -811,7 +811,7 @@ def admin_set_tutorial_callback(update: Update, context: CallbackContext):
 • <code>https://example.com/tutorial</code>
 • <code>https://docs.google.com/document/xxx</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -849,7 +849,7 @@ def admin_set_notify_channel_callback(update: Update, context: CallbackContext):
 • 数字ID (通常以 -100 开头): <code>-100123456789</code>
 • 或频道用户名: <code>@yourchannel</code>
 
-发送 <code>清除</code> 可以清除当前设置"""
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置"""
     
     keyboard = [[InlineKeyboardButton("❌ 取消", callback_data=f"agent_settings {agent_id}")]]
     
@@ -887,7 +887,7 @@ def admin_set_notify_group_callback(update: Update, context: CallbackContext):
 • 数字ID (通常以负数开头): <code>-123456789</code>
 • 或群组用户名: <code>@yourgroup</code>
 
-发送 <code>清除</code> 可以清除当前设置
+发送 <code>清除</code> 或 <code>clear</code> 可以清除当前设置
 
 <b>注意:</b> 群组主题支持 (message_thread_id) 将在未来版本中添加"""
     
@@ -1114,8 +1114,8 @@ def admin_setting_text_input(update: Update, context: CallbackContext):
     text = update.message.text.strip()
     
     try:
-        # Handle clearing
-        if text == "清除":
+        # Handle clearing (support both Chinese and English)
+        if text.lower() in ["清除", "clear", "reset"]:
             agents.update_one(
                 {"agent_id": agent_id},
                 {

@@ -1645,7 +1645,7 @@ def show_admin_panel(update: Update, context: CallbackContext, user_id: int):
         InlineKeyboardButton('导出用户列表', callback_data='export_userlist'),
         InlineKeyboardButton('导出下单记录', callback_data='export_orders'),
         InlineKeyboardButton('管理员管理', callback_data='admin_manage'),
-        InlineKeyboardButton('代理管理', callback_data='agent_manage'),
+        InlineKeyboardButton('代理管理', callback_data='agent_panel'),
         InlineKeyboardButton('销售统计', callback_data='sales_dashboard'),
         InlineKeyboardButton('库存预警', callback_data='stock_alerts'),
         InlineKeyboardButton('数据导出', callback_data='data_export_menu'),
@@ -5244,7 +5244,7 @@ def backstart(update: Update, context: CallbackContext):
         InlineKeyboardButton('导出用户列表', callback_data='export_userlist'),
         InlineKeyboardButton('导出下单记录', callback_data='export_orders'),
         InlineKeyboardButton('管理员管理', callback_data='admin_manage'),
-        InlineKeyboardButton('代理管理', callback_data='agent_manage'),
+        InlineKeyboardButton('代理管理', callback_data='agent_panel'),
         InlineKeyboardButton('销售统计', callback_data='sales_dashboard'),
         InlineKeyboardButton('库存预警', callback_data='stock_alerts'),
         InlineKeyboardButton('数据导出', callback_data='data_export_menu'),
@@ -6767,9 +6767,6 @@ def trc20_rescan_txid_prompt(update: Update, context: CallbackContext):
     user.update_one({'user_id': user_id}, {"$set": {'sign': 'trc20_rescan_txid'}})
     
     safe_edit_message(query, text=text, reply_markup=InlineKeyboardMarkup(keyboard))
-        parse_mode='HTML',
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
 
 
 def trc20_rescan_order_prompt(update: Update, context: CallbackContext):

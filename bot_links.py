@@ -154,8 +154,9 @@ def format_contacts_block_for_child(context: CallbackContext, lang: str = 'zh') 
             msg_parts.append(f"• <a href='{url}'>{title}</a>")
     
     if not msg_parts:
-        # No links configured
-        return f"<i>{'未设置联系方式' if lang == 'zh' else 'No contact information configured'}</i>"
+        # No links configured for child agent - return empty string
+        # so no contacts block is appended to buyer messages
+        return ""
     
     return "\n".join(msg_parts)
 
